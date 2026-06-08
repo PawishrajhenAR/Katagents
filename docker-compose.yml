@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: katalyzu
+      POSTGRES_PASSWORD: katalyzu
+      POSTGRES_DB: katalyzu
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U katalyzu -d katalyzu"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://katalyzu:katalyzu@postgres:5432/katalyzu
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    working_dir: /app
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    command: python -m entrypoints.worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://katalyzu:katalyzu@postgres:5432/katalyzu
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    working_dir: /app
+
+  scheduler:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    command: python -m entrypoints.scheduler
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://katalyzu:katalyzu@postgres:5432/katalyzu
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    working_dir: /app
+
+volumes:
+  postgres_data:

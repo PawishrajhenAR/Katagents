@@ -1,0 +1,11 @@
+{
+  "name": "katagents",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --dir apps/web dev",
+    "dev:api": "cd apps/api && .venv/bin/uvicorn main:app --reload --port 8000",
+    "dev:worker": "cd apps/api && .venv/bin/python -m entrypoints.worker",
+    "build:web": "pnpm --dir apps/web build",
+    "migrate": "cd apps/api && .venv/bin/alembic upgrade head"
+  }
+}
