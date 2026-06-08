@@ -34,8 +34,9 @@ out/
 .DS_Store
 Thumbs.db
 
-# Docker
-*.log
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
 
 # Coverage
 coverage/

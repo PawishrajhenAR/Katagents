@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://katalyzu:katalyzu@localhost:5432/katalyzu"
     redis_url: str = "redis://localhost:6379/0"
 
+    supabase_url: str = "https://ybvxucxndarcycjzmywt.supabase.co"
+    supabase_project_ref: str = "ybvxucxndarcycjzmywt"
+
     jwt_secret: str = "change-me-in-production"
     jwt_access_expire_minutes: int = 15
     jwt_refresh_expire_days: int = 7

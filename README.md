@@ -35,20 +35,32 @@ chmod +x scripts/setup-local-db.sh
 ./scripts/setup-local-db.sh
 ```
 
-### Option C: Supabase (cloud Postgres)
+### Option C: Supabase (cloud Postgres) — **configured**
 
-1. Create a free project at [supabase.com](https://supabase.com)
-2. Copy the **Session pooler** connection string from Project Settings → Database
-3. Set in `apps/api/.env`:
+This repo is linked to Supabase project **`ybvxucxndarcycjzmywt`**.
+
+See **[docs/SUPABASE.md](docs/SUPABASE.md)** for full setup.
+
+**GitHub integration working directory:** `.` (repo root)
+
+1. Copy database password from [Supabase Dashboard → Database](https://supabase.com/dashboard/project/ybvxucxndarcycjzmywt/settings/database)
+2. Set in `apps/api/.env`:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql+asyncpg://postgres:YOUR_DB_PASSWORD@db.ybvxucxndarcycjzmywt.supabase.co:5432/postgres
 ```
 
-Then run migrations:
+3. Schema is already applied (`supabase/migrations/20250608000000_initial_schema.sql`). Stamp Alembic so local CLI stays in sync:
 
 ```bash
-cd apps/api && source .venv/bin/activate && alembic upgrade head
+cd apps/api && source .venv/bin/activate && alembic stamp head
+```
+
+4. Start API and verify:
+
+```bash
+uvicorn main:app --reload --port 8000
+curl http://localhost:8000/ready
 ```
 
 ### 1. Environment
