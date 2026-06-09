@@ -17,16 +17,36 @@ router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 
 async def _campaign_stats(db: AsyncSession, campaign_id: uuid.UUID) -> tuple[int, int]:
-    lead_count = await db.scalar(
-        select(func.count()).select_from(CampaignLead).where(CampaignLead.campaign_id == campaign_id)
+    stats = await _batch_campaign_stats(db, [campaign_id])
+    return stats.get(campaign_id, (0, 0))
+
+
+async def _batch_campaign_stats(
+    db: AsyncSession, campaign_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, int]]:
+    if not campaign_ids:
+        return {}
+
+    lead_result = await db.execute(
+        select(CampaignLead.campaign_id, func.count())
+        .where(CampaignLead.campaign_id.in_(campaign_ids))
+        .group_by(CampaignLead.campaign_id)
     )
-    pending = await db.scalar(
-        select(func.count()).select_from(EmailDraft).where(
-            EmailDraft.campaign_id == campaign_id,
+    pending_result = await db.execute(
+        select(EmailDraft.campaign_id, func.count())
+        .where(
+            EmailDraft.campaign_id.in_(campaign_ids),
             EmailDraft.status == "pending",
         )
+        .group_by(EmailDraft.campaign_id)
     )
-    return lead_count or 0, pending or 0
+
+    lead_counts = {row[0]: row[1] for row in lead_result.all()}
+    pending_counts = {row[0]: row[1] for row in pending_result.all()}
+    return {
+        cid: (lead_counts.get(cid, 0), pending_counts.get(cid, 0))
+        for cid in campaign_ids
+    }
 
 
 def _to_out(campaign: Campaign, lead_count: int, pending: int) -> CampaignOut:
@@ -68,10 +88,8 @@ async def list_campaigns(
         query.order_by(Campaign.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
     )
     campaigns = result.scalars().all()
-    data = []
-    for c in campaigns:
-        lc, pd = await _campaign_stats(db, c.id)
-        data.append(_to_out(c, lc, pd))
+    stats = await _batch_campaign_stats(db, [c.id for c in campaigns])
+    data = [_to_out(c, *stats.get(c.id, (0, 0))) for c in campaigns]
     return {"data": data, "meta": {"page": page, "per_page": per_page, "total": total or 0}}
 
 

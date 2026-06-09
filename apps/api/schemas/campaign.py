@@ -41,6 +41,10 @@ class LeadCreate(BaseModel):
     source: str | None = "manual"
 
 
+class LeadUpdate(BaseModel):
+    status: str | None = None
+
+
 class LeadOut(BaseModel):
     id: uuid.UUID
     org_id: uuid.UUID

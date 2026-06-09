@@ -1,16 +1,14 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from agents.base import AgentContext, StepResult
 from models.campaign import CampaignLead, Lead, LeadStatus
-from models.email import EmailDraft
+from models.email import EmailDraft, EmailStatus
 
 
 async def run_sender(ctx: AgentContext) -> StepResult:
-    from core.rate_limit import RateLimitService, get_redis
+    from core.rate_limit import check_org_email_limit
 
-    redis = await get_redis()
-    rate_limiter = RateLimitService(redis)
-    if not await rate_limiter.check_org_email_limit(str(ctx.org_id)):
+    if not await check_org_email_limit(str(ctx.org_id)):
         return StepResult(success=False, error="Daily email send limit reached for organization")
 
     result = await ctx.db.execute(
@@ -24,9 +22,11 @@ async def run_sender(ctx: AgentContext) -> StepResult:
     )
     rows = result.all()
     sent = 0
+    failed = 0
+    errors: list[str] = []
 
     for draft, lead in rows:
-        await ctx.services.email.send_email(
+        email_record = await ctx.services.email.send_email(
             to_email=lead.email,
             subject=draft.subject,
             body=draft.body,
@@ -35,18 +35,23 @@ async def run_sender(ctx: AgentContext) -> StepResult:
             org_id=ctx.org_id,
             draft_id=draft.id,
         )
-        draft.status = "sent"
+        if email_record.status != EmailStatus.SENT.value:
+            failed += 1
+            errors.append(f"{lead.email}: delivery failed (check Resend limits or use pawishgpt@gmail.com for testing)")
+            continue
 
-        cl_result = await ctx.db.execute(
-            select(CampaignLead).where(
+        draft.status = "sent"
+        await ctx.db.execute(
+            update(CampaignLead)
+            .where(
                 CampaignLead.campaign_id == ctx.campaign_id,
                 CampaignLead.lead_id == lead.id,
             )
+            .values(status=LeadStatus.SENT.value)
         )
-        cl = cl_result.scalar_one_or_none()
-        if cl:
-            cl.status = LeadStatus.SENT.value
-        lead.status = LeadStatus.SENT.value
+        await ctx.db.execute(
+            update(Lead).where(Lead.id == lead.id).values(status=LeadStatus.SENT.value)
+        )
         sent += 1
 
         await ctx.services.analytics.track(
@@ -57,5 +62,12 @@ async def run_sender(ctx: AgentContext) -> StepResult:
             properties={"lead_id": str(lead.id)},
         )
 
-    ctx.log("info", f"Sent {sent} emails")
-    return StepResult(success=True, output={"emails_sent": sent})
+    ctx.log("info", f"Sent {sent} emails" + (f", {failed} failed" if failed else ""))
+
+    if sent == 0 and failed > 0:
+        return StepResult(success=False, error="; ".join(errors[:3]))
+
+    return StepResult(
+        success=True,
+        output={"emails_sent": sent, "emails_failed": failed, "errors": errors},
+    )

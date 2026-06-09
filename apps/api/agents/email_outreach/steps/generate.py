@@ -27,14 +27,33 @@ async def run_email_generator(ctx: AgentContext) -> StepResult:
     rows = result.all()
     generated = 0
 
-    for cl, lead in rows:
+    research_by_lead: dict = {}
+    if rows:
+        lead_ids = [lead.id for _, lead in rows]
         research_result = await ctx.db.execute(
             select(ResearchRecord)
-            .where(ResearchRecord.lead_id == lead.id, ResearchRecord.campaign_id == ctx.campaign_id)
-            .order_by(ResearchRecord.created_at.desc())
-            .limit(1)
+            .where(
+                ResearchRecord.campaign_id == ctx.campaign_id,
+                ResearchRecord.lead_id.in_(lead_ids),
+            )
+            .order_by(ResearchRecord.lead_id, ResearchRecord.created_at.desc())
         )
-        research = research_result.scalar_one_or_none()
+        for record in research_result.scalars().all():
+            if record.lead_id not in research_by_lead:
+                research_by_lead[record.lead_id] = record
+
+    for cl, lead in rows:
+        existing = await ctx.db.scalar(
+            select(EmailDraft.id).where(
+                EmailDraft.campaign_id == ctx.campaign_id,
+                EmailDraft.lead_id == lead.id,
+                EmailDraft.agent_run_id == ctx.run_id,
+            )
+        )
+        if existing:
+            continue
+
+        research = research_by_lead.get(lead.id)
         summary = research.summary if research else "No research available."
 
         prompt = f"""Write a personalized cold outreach email.

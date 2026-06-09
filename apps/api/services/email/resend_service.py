@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -5,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from models.email import Email, EmailStatus
+
+logger = logging.getLogger(__name__)
 
 
 class EmailService:
@@ -50,9 +53,15 @@ class EmailService:
                 email_record.status = EmailStatus.SENT.value
                 email_record.sent_at = datetime.now(UTC)
             except Exception as e:
+                logger.error("Resend failed for %s: %s", to_email, e)
                 email_record.status = EmailStatus.FAILED.value
                 email_record.body = f"{body}\n\n[Send error: {e}]"
         else:
+            logger.warning(
+                "RESEND_API_KEY is not set — email to %s was recorded but NOT sent. "
+                "Add RESEND_API_KEY and RESEND_FROM_EMAIL to .env to deliver real mail.",
+                to_email,
+            )
             email_record.resend_id = f"mock-{email_record.id}"
             email_record.status = EmailStatus.SENT.value
             email_record.sent_at = datetime.now(UTC)
