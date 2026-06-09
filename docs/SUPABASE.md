@@ -14,19 +14,30 @@ When linking this repo in Supabase:
 
 ## Local API connection
 
-1. Open [Supabase Dashboard](https://supabase.com/dashboard/project/ybvxucxndarcycjzmywt/settings/database)
-2. Copy your **database password** (or reset it)
-3. Set in `apps/api/.env`:
+The API loads env from **`apps/api/.env` first**, then **repo root `.env`** (root wins if both define the same key). You can keep `DATABASE_URL` in either file.
+
+1. Open [Supabase Dashboard → Database settings](https://supabase.com/dashboard/project/ybvxucxndarcycjzmywt/settings/database)
+2. Copy your **database password** (or reset it). URL-encode special characters in the connection string (`@` → `%40`, `#` → `%23`).
+3. Prefer the **Session pooler** URI (not the direct `db.*.supabase.co` host):
+
+   - Direct host is **IPv6-only**; many local networks refuse it → `Connection refused` on signup.
+   - Session pooler has IPv4 and works from most dev machines.
+
+   In the dashboard: **Connect** → **Session pooler** → copy the URI, then switch the scheme for this API:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:YOUR_DB_PASSWORD@db.ybvxucxndarcycjzmywt.supabase.co:5432/postgres
+# Example shape — replace REGION and password from your dashboard
+DATABASE_URL=postgresql+asyncpg://postgres.ybvxucxndarcycjzmywt:YOUR_URL_ENCODED_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres
+```
+
+Set in **repo root `.env`** and/or **`apps/api/.env`**:
+
+```env
 SUPABASE_URL=https://ybvxucxndarcycjzmywt.supabase.co
 SUPABASE_PROJECT_REF=ybvxucxndarcycjzmywt
 ```
 
-For serverless/pooled connections (production), use the **Session pooler** URI from the dashboard (port 6543) instead.
-
-4. Start the API:
+4. Restart the API after changing env (uvicorn reload does not always re-read `.env`):
 
 ```bash
 cd apps/api && source .venv/bin/activate && uvicorn main:app --reload --port 8000
