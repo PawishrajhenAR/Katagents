@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -68,7 +69,8 @@ async def start_run(
     )
     db.add(run)
     await db.flush()
-    await enqueue_agent_run(str(run.id))
+    await db.commit()
+    asyncio.create_task(enqueue_agent_run(str(run.id)))
     return AgentRunOut.model_validate(run)
 
 
@@ -148,8 +150,14 @@ async def resume_run(
         AgentRunStatus.WAITING_APPROVAL.value,
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot resume run")
+
+    ctx_json = dict(run.context_json or {})
+    if run.status == AgentRunStatus.WAITING_APPROVAL.value:
+        ctx_json["from_step"] = "send"
+    run.context_json = ctx_json
     run.status = AgentRunStatus.QUEUED.value
-    await enqueue_agent_run(str(run.id))
+    await db.commit()
+    asyncio.create_task(enqueue_agent_run(str(run.id)))
     return AgentRunOut.model_validate(run)
 
 

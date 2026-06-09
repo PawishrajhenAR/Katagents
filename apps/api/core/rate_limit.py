@@ -1,5 +1,4 @@
 import time
-from collections import defaultdict
 
 from redis.asyncio import Redis
 
@@ -35,3 +34,11 @@ class RateLimitService:
 
     async def check_api_limit(self, user_id: str, limit: int = 100) -> bool:
         return await self.check_limit(f"api:{user_id}", limit, 60)
+
+
+async def check_org_email_limit(org_id: str, daily_limit: int = 500) -> bool:
+    try:
+        redis = await get_redis()
+        return await RateLimitService(redis).check_org_email_limit(org_id, daily_limit)
+    except Exception:
+        return True

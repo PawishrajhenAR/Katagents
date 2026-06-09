@@ -37,7 +37,7 @@ async def run_follow_up_scheduler(ctx: AgentContext) -> StepResult:
 
     ctx.log("info", f"Follow-up scheduler configured: {delay_days} days, max {max_follow_ups}")
 
-    await ctx.services.scheduler.enqueue_delayed(
+    scheduled = await ctx.services.scheduler.enqueue_delayed(
         "schedule_follow_up",
         str(ctx.run_id),
         delay_days * 86400,
@@ -45,4 +45,13 @@ async def run_follow_up_scheduler(ctx: AgentContext) -> StepResult:
         org_id=str(ctx.org_id),
     )
 
-    return StepResult(success=True, output={"follow_up_scheduled_days": delay_days})
+    if not scheduled:
+        ctx.log(
+            "warning",
+            "Follow-up job not queued — start Redis (docker compose up redis) for delayed follow-ups",
+        )
+
+    return StepResult(
+        success=True,
+        output={"follow_up_scheduled_days": delay_days, "follow_up_queued": scheduled},
+    )

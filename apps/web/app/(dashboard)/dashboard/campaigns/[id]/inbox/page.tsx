@@ -2,17 +2,20 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api-client";
+import { Inbox } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/input";
+import { apiFetch } from "@/lib/api-client";
 import type { Paginated, Reply } from "@/types/api";
 
-const classificationColors: Record<string, string> = {
-  interested: "bg-green-100 text-green-800",
-  objection: "bg-yellow-100 text-yellow-800",
+const classificationStyles: Record<string, string> = {
+  interested: "bg-emerald-100 text-emerald-800",
+  objection: "bg-amber-100 text-amber-800",
   not_now: "bg-blue-100 text-blue-800",
   unsubscribe: "bg-red-100 text-red-800",
-  ooo: "bg-gray-100 text-gray-800",
-  other: "bg-gray-100 text-gray-600",
+  ooo: "bg-slate-100 text-slate-700",
+  other: "bg-slate-100 text-slate-600",
 };
 
 export default function CampaignInboxPage() {
@@ -23,30 +26,42 @@ export default function CampaignInboxPage() {
     queryFn: () => apiFetch<Paginated<Reply>>(`/campaigns/${id}/replies`),
   });
 
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold">Inbox</h1>
-      <p className="mt-1 text-muted">Inbound replies and AI classifications</p>
+  const replies = data?.data ?? [];
 
-      <div className="mt-8 space-y-4">
-        {isLoading && <p className="text-muted">Loading...</p>}
-        {(data?.data ?? []).map((reply) => (
-          <Card key={reply.id}>
-            <div className="flex items-center justify-between">
+  return (
+    <div className="space-y-6">
+      <Card className="border-border bg-card">
+        <p className="text-sm font-medium">Replies land here</p>
+        <p className="mt-1 text-sm text-muted">
+          When someone responds to a sent email, the AI classifies it (interested, not now, etc.) so you can prioritize.
+        </p>
+      </Card>
+
+      {isLoading && <p className="text-muted">Loading inbox...</p>}
+
+      {!isLoading && replies.length === 0 && (
+        <EmptyState
+          icon={Inbox}
+          title="Inbox is empty"
+          description="Replies appear after emails are sent. With local mock mode, inbox stays empty until you connect Resend."
+        />
+      )}
+
+      <div className="space-y-4">
+        {replies.map((reply) => (
+          <Card key={reply.id} className="animate-fade-up">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium">{reply.from_address}</p>
               {reply.classification && (
-                <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${classificationColors[reply.classification] || classificationColors.other}`}>
+                <Badge className={classificationStyles[reply.classification] ?? classificationStyles.other}>
                   {reply.classification.replace("_", " ")}
-                </span>
+                </Badge>
               )}
             </div>
             <p className="mt-1 text-xs text-muted">{new Date(reply.received_at).toLocaleString()}</p>
-            <p className="mt-3 whitespace-pre-wrap text-sm">{reply.body_text}</p>
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{reply.body_text}</p>
           </Card>
         ))}
-        {!isLoading && !data?.data?.length && (
-          <Card><p className="text-muted">No replies yet.</p></Card>
-        )}
       </div>
     </div>
   );

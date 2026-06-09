@@ -15,10 +15,10 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
-# Environment
+# Environment — never commit real keys (only .env.example)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Next.js
 .next/
@@ -33,6 +33,9 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Editor / local tooling
+.cursor/
 
 # Supabase CLI
 supabase/.temp/

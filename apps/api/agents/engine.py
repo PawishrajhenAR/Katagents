@@ -65,11 +65,15 @@ class AgentExecutionEngine:
 
         run.status = AgentRunStatus.RUNNING.value
         run.started_at = run.started_at or datetime.now(UTC)
-        await self.logger.log(run.id, "info", f"Starting agent run for {run.agent_type}")
-        await agent.on_run_start(ctx)
+        from_step = (run.context_json or {}).get("from_step")
+        resuming = bool(from_step)
+        if not resuming:
+            await self.logger.log(run.id, "info", f"Starting agent run for {run.agent_type}")
+            await agent.on_run_start(ctx)
+        else:
+            await self.logger.log(run.id, "info", f"Resuming agent run from step: {from_step}")
 
         steps = agent.get_steps()
-        from_step = (run.context_json or {}).get("from_step")
         start_idx = steps.index(from_step) if from_step and from_step in steps else 0
 
         for step_name in steps[start_idx:]:

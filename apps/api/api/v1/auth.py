@@ -1,8 +1,10 @@
 import re
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import log_audit
@@ -15,7 +17,7 @@ from core.security import (
     verify_password,
 )
 from database import get_db
-from dependencies import AuthContext, get_auth_context, get_current_user
+from dependencies import AuthContext, get_auth_context
 from models.user import Organization, OrganizationMember, RefreshToken, User
 from schemas.auth import (
     AuthMeResponse,
@@ -46,17 +48,13 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     user = User(email=body.email, password_hash=hash_password(body.password), name=body.name)
     db.add(user)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered") from exc
 
     base_slug = slugify(body.org_name)
-    slug = base_slug
-    counter = 1
-    while True:
-        check = await db.execute(select(Organization).where(Organization.slug == slug))
-        if not check.scalar_one_or_none():
-            break
-        slug = f"{base_slug}-{counter}"
-        counter += 1
+    slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
 
     org = Organization(name=body.org_name, slug=slug)
     db.add(org)
@@ -111,6 +109,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         select(RefreshToken).where(
             RefreshToken.token_hash == token_hash,
             RefreshToken.revoked.is_(False),
+            RefreshToken.expires_at > datetime.now(UTC),
         )
     )
     stored = result.scalar_one_or_none()
@@ -120,7 +119,9 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     stored.revoked = True
 
     user_result = await db.execute(select(User).where(User.id == stored.user_id))
-    user = user_result.scalar_one()
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
     membership_result = await db.execute(
         select(OrganizationMember).where(OrganizationMember.user_id == user.id).limit(1)
     )
@@ -151,19 +152,18 @@ async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=AuthMeResponse)
 async def me(
-    user: User = Depends(get_current_user),
     ctx: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ):
     memberships = await db.execute(
         select(OrganizationMember, Organization)
         .join(Organization, Organization.id == OrganizationMember.org_id)
-        .where(OrganizationMember.user_id == user.id)
+        .where(OrganizationMember.user_id == ctx.user.id)
     )
     orgs = [org for _, org in memberships.all()]
     current = next((o for o in orgs if o.id == ctx.org_id), orgs[0] if orgs else None)
     return AuthMeResponse(
-        user=UserOut.model_validate(user),
+        user=UserOut.model_validate(ctx.user),
         orgs=[OrganizationOut.model_validate(o) for o in orgs],
         current_org=OrganizationOut.model_validate(current) if current else None,
         role=ctx.role,

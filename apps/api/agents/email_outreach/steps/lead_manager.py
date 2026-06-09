@@ -12,22 +12,26 @@ def _valid_email(email: str) -> bool:
 
 
 async def run_lead_manager(ctx: AgentContext) -> StepResult:
-    result = await ctx.db.execute(
-        select(CampaignLead).where(CampaignLead.campaign_id == ctx.campaign_id)
+    unsub_result = await ctx.db.execute(
+        select(Unsubscribe.email).where(Unsubscribe.org_id == ctx.org_id)
     )
-    campaign_leads = result.scalars().all()
+    unsubscribed = set(unsub_result.scalars().all())
+
+    result = await ctx.db.execute(
+        select(CampaignLead, Lead)
+        .join(Lead, Lead.id == CampaignLead.lead_id)
+        .where(CampaignLead.campaign_id == ctx.campaign_id)
+    )
 
     ready = 0
     skipped = 0
 
-    for cl in campaign_leads:
-        lead_result = await ctx.db.execute(select(Lead).where(Lead.id == cl.lead_id))
-        lead = lead_result.scalar_one()
+    for cl, lead in result.all():
+        if cl.status == LeadStatus.SKIPPED.value:
+            skipped += 1
+            continue
 
-        unsub = await ctx.db.execute(
-            select(Unsubscribe).where(Unsubscribe.org_id == ctx.org_id, Unsubscribe.email == lead.email)
-        )
-        if unsub.scalar_one_or_none() or not _valid_email(lead.email):
+        if lead.email in unsubscribed or not _valid_email(lead.email):
             cl.status = LeadStatus.SKIPPED.value
             skipped += 1
             continue
