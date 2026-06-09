@@ -1,6 +1,7 @@
 {
   "name": "katagents",
   "private": true,
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev:web": "pnpm --dir apps/web dev",
     "dev:api": "cd apps/api && .venv/bin/uvicorn main:app --reload --port 8000",
